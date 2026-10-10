@@ -17,7 +17,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$SDK_ROOT"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"; fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -37,6 +48,8 @@ jobs:
           APP_VERSION=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)
           test -n "$APP_VERSION"
           test "$RELEASE_TAG" = "v$APP_VERSION"
+          git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null 2>&1 || { echo "Create and push release tag first"; exit 1; }
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$GITHUB_SHA" || { echo "Release tag must point to workflow commit"; exit 1; }
           printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/novaris-release.jks"
           echo "NOVARIS_SIGNING_STORE_FILE=$RUNNER_TEMP/novaris-release.jks" >> "$GITHUB_ENV"
       - name: Build signed release APK
@@ -59,6 +72,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
+          test -z "$(gh release view "$RELEASE_TAG" --json tagName --jq .tagName 2>/dev/null || true)" || { echo "Release already exists"; exit 1; }
           gh release create "$RELEASE_TAG" novaris-release.apk novaris-release.apk.sha256 --title "Novaris $RELEASE_TAG" --generate-notes --verify-tag
       - name: Remove temporary keystore
         if: always()

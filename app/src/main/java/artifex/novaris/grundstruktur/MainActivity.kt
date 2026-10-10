@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -159,6 +160,26 @@ private fun checkApk(): Pair<String,String?> {
 class MainActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val backupExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            if (uri != null) {
+                Thread {
+                    runCatching { NovarisBackup.export(this, uri) }
+                        .onSuccess { runOnUiThread { android.widget.Toast.makeText(this, "Novaris-Backup gespeichert", android.widget.Toast.LENGTH_LONG).show() } }
+                        .onFailure { error -> runOnUiThread { android.widget.Toast.makeText(this, "Backup-Fehler: ${error.message}", android.widget.Toast.LENGTH_LONG).show() } }
+                }.start()
+            }
+        }
+        val backupImport = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                Thread {
+                    runCatching { NovarisBackup.restore(this, uri) }
+                        .onSuccess { runOnUiThread {
+                            android.widget.Toast.makeText(this, "Wiederhergestellt. Novaris bitte neu starten.", android.widget.Toast.LENGTH_LONG).show()
+                        } }
+                        .onFailure { error -> runOnUiThread { android.widget.Toast.makeText(this, "Wiederherstellung fehlgeschlagen: ${error.message}", android.widget.Toast.LENGTH_LONG).show() } }
+                }.start()
+            }
+        }
         val store=ContentStore(this)
         if(store.version()==0L) {
             try { store.install(JSONObject(assets.open("seed.json").bufferedReader().use { it.readText() })) } catch (_:Exception) {}
@@ -311,6 +332,9 @@ class MainActivity: ComponentActivity() {
                         }
                         item {
                             HorizontalDivider()
+                            Text("Datensicherung",color=Gold)
+                            OutlinedButton(enabled=!busy,onClick={ backupExport.launch("novaris-backup.zip") }) { Text("Backup speichern") }
+                            OutlinedButton(enabled=!busy,onClick={ backupImport.launch(arrayOf("application/zip", "application/octet-stream")) }) { Text("Backup wiederherstellen") }
                             Text("Aktualisierungen",color=Gold)
                             Button(enabled=!busy,onClick={
                                 busy=true

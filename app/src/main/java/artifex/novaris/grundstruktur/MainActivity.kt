@@ -322,11 +322,19 @@ class MainActivity: ComponentActivity() {
                             OutlinedButton(enabled=!busy,onClick={
                                 busy=true
                                 scope.launch {
-                                    val result=withContext(Dispatchers.IO) { try { checkApk() } catch(e:Exception) { Pair("APK-Prüfung: ${e.message}",null) } }
-                                    status=result.first;busy=false
-                                    result.second?.let { url -> startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url))) }
+                                    status = withContext(Dispatchers.IO) {
+                                        try {
+                                            val available = AppUpdater.check(this@MainActivity)
+                                            if (available == null) "App ist aktuell (Build ${AppUpdater.installedCode(this@MainActivity)})."
+                                            else {
+                                                AppUpdater.downloadAndInstall(this@MainActivity, available)
+                                                "Update ${available.version} heruntergeladen. Bitte Android-Installation bestätigen."
+                                            }
+                                        } catch (e: Exception) { "App-Update: ${e.message ?: "Fehler"}" }
+                                    }
+                                    busy=false
                                 }
-                            }) { Text("APK-Version prüfen") }
+                            }) { Text("App-Update prüfen") }
                             if(status.isNotBlank()) Text(status)
                             Text("Offline-Datenversion: ${store.version()}",color=Color.LightGray)
                         }

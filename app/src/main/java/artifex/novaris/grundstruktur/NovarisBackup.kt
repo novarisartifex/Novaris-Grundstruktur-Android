@@ -142,6 +142,9 @@ internal object NovarisBackup {
             dbRecovery.writeBytes(oldDatabase)
             val previous = File(context.filesDir, "novaris-restore-previous")
             require(!previous.exists()) { "Previous restore backup exists" }
+            val marker = File(context.filesDir, "novaris-restore-in-progress")
+            require(!marker.exists())
+            marker.writeText("in-progress")
             if (base.exists()) require(base.renameTo(previous))
             try {
                 require(staging.renameTo(base))
@@ -197,8 +200,10 @@ internal object NovarisBackup {
                 }.onFailure { recovery -> throw IllegalStateException("Restore failed and database recovery also failed", recovery) }
                 base.deleteRecursively()
                 if (previous.exists()) check(previous.renameTo(base)) { "Could not recover previous offline content" }
+                File(context.filesDir, "novaris-restore-in-progress").delete()
                 throw error
             }
+            check(File(context.filesDir, "novaris-restore-in-progress").delete())
             // Keep previous content and DB recovery snapshot until migration is verified.
             // Preferences are deliberately not overwritten while the app process is alive.
         } finally {

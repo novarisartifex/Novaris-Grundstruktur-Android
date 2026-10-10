@@ -166,8 +166,36 @@ internal object NovarisBackup {
                     } finally { db.endTransaction() }
                 } finally { db.close() }
             } catch (error: Exception) {
+                // Restore logical database snapshot if the content switch or DB update fails.
+                runCatching {
+                    val snapshot = JSONObject(String(dbRecovery.readBytes(), Charsets.UTF_8))
+                    val oldEntries = snapshot.getJSONArray("entries")
+                    val oldMetadata = snapshot.getJSONArray("metadata")
+                    val db = SQLiteDatabase.openDatabase(context.getDatabasePath("novaris.db").path, null, SQLiteDatabase.OPEN_READWRITE)
+                    try {
+                        db.beginTransaction()
+                        try {
+                            db.delete("entries", null, null)
+                            db.delete("metadata", null, null)
+                            for (i in 0 until oldEntries.length()) {
+                                val row = oldEntries.getJSONArray(i)
+                                val values = android.content.ContentValues()
+                                for ((j, key) in listOf("section", "id", "title", "category", "detail").withIndex()) values.put(key, row.getString(j))
+                                db.insertOrThrow("entries", null, values)
+                            }
+                            for (i in 0 until oldMetadata.length()) {
+                                val row = oldMetadata.getJSONArray(i)
+                                val values = android.content.ContentValues()
+                                values.put("key", row.getString(0))
+                                values.put("value", row.getString(1))
+                                db.insertOrThrow("metadata", null, values)
+                            }
+                            db.setTransactionSuccessful()
+                        } finally { db.endTransaction() }
+                    } finally { db.close() }
+                }.onFailure { recovery -> throw IllegalStateException("Restore failed and database recovery also failed", recovery) }
                 base.deleteRecursively()
-                if (previous.exists()) previous.renameTo(base)
+                if (previous.exists()) check(previous.renameTo(base)) { "Could not recover previous offline content" }
                 throw error
             }
             // Keep previous content and DB recovery snapshot until migration is verified.

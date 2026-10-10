@@ -46,7 +46,7 @@ internal object AppUpdater {
         }
         error("No novaris-release.apk in latest release")
     }
-    fun downloadAndInstall(context: Context, update: Available) {
+    fun download(context: Context, update: Available): File {
         val folder = File(context.cacheDir, "app_updates").apply { mkdirs() }
         val temp = File(folder, "pending.apk")
         val target = File(folder, "novaris-release.apk")
@@ -73,24 +73,26 @@ internal object AppUpdater {
             require(temp.length() > 0) { "Empty APK" }
             if (target.exists()) target.delete()
             check(temp.renameTo(target)) { "Cannot activate APK" }
-            val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", target)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
-                val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:" + context.packageName)).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(settings)
-                error("Allow updates from Novaris in Android settings, then check again")
-            }
-            context.startActivity(intent)
+            return target
         } finally {
             connection.disconnect()
             if (temp.exists()) temp.delete()
         }
+    }
+    fun install(context: Context, apk: File) {
+        require(apk.isFile && apk.length() > 0L)
+        if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
+            val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:" + context.packageName))
+            context.startActivity(settings)
+            error("Bitte Installation aus Novaris erlauben und danach erneut prüfen")
+        }
+        val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", apk)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(intent)
     }
     private fun HttpURLConnection.useJson(): JSONObject = try {
         require(responseCode == 200) { "GitHub HTTP $responseCode" }

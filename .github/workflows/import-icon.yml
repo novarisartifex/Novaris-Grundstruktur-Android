@@ -1,0 +1,60 @@
+name: Import Novaris app icon
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release containing Novaris_Android_AppIcon.zip
+        required: true
+        default: app-icon-v1
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Download icon package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: gh release download "$TAG" --pattern 'Novaris_Android_AppIcon.zip' --dir /tmp
+      - name: Validate and install icons
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          path = Path('/tmp/Novaris_Android_AppIcon.zip')
+          with zipfile.ZipFile(path) as archive:
+              members = archive.namelist()
+              assert members and len(members) <= 30
+              for member in members:
+                  assert member.startswith('app/src/main/res/')
+                  assert '..' not in Path(member).parts
+                  assert member.endswith(('.png', '.xml'))
+                  assert archive.getinfo(member).file_size <= 2_000_000
+                  destination = Path(member)
+                  if destination.exists():
+                      assert destination.read_bytes() == archive.read(member), f'Existing icon differs: {member}'
+              archive.extractall('.')
+          PY
+      - name: Configure launcher icon
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/AndroidManifest.xml')
+          text = p.read_text()
+          if 'android:icon=' not in text:
+              text = text.replace('<application ', '<application android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" ', 1)
+              p.write_text(text)
+          PY
+      - name: Commit icons without overwriting existing assets
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/res app/src/main/AndroidManifest.xml
+          if ! git diff --cached --quiet; then
+            git commit -m 'Install Novaris compass launcher icon'
+            git push origin HEAD:main
+          fi

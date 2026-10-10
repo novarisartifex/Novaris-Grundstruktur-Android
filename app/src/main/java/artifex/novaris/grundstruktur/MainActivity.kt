@@ -160,6 +160,7 @@ private fun checkApk(): Pair<String,String?> {
 class MainActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val store=ContentStore(this)
         val backupExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
             if (uri != null) {
                 Thread {
@@ -172,7 +173,7 @@ class MainActivity: ComponentActivity() {
         val backupImport = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
                 Thread {
-                    runCatching { NovarisBackup.restore(this, uri) }
+                    runCatching { store.close(); NovarisBackup.restore(this, uri) }
                         .onSuccess { runOnUiThread {
                             android.widget.Toast.makeText(this, "Wiederhergestellt. Novaris bitte neu starten.", android.widget.Toast.LENGTH_LONG).show()
                         } }
@@ -180,7 +181,6 @@ class MainActivity: ComponentActivity() {
                 }.start()
             }
         }
-        val store=ContentStore(this)
         if(store.version()==0L) {
             try { store.install(JSONObject(assets.open("seed.json").bufferedReader().use { it.readText() })) } catch (_:Exception) {}
         }

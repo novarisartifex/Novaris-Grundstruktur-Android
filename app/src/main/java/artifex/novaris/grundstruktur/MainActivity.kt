@@ -161,13 +161,16 @@ class MainActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (java.io.File(filesDir, "novaris-restore-in-progress").exists()) {
-            android.app.AlertDialog.Builder(this)
-                .setTitle("Novaris-Wiederherstellung unterbrochen")
-                .setMessage("Ein vorheriger Restore wurde nicht abgeschlossen. Die vorhandenen Sicherungsdateien bleiben erhalten. Bitte keine Datenupdates oder Deinstallation durchführen, bis die Wiederherstellung geprüft wurde.")
-                .setPositiveButton("App schließen") { _, _ -> finish() }
-                .setCancelable(false)
-                .show()
-            return
+            val recovered = runCatching { NovarisBackup.recoverInterrupted(this) }
+            if (recovered.isFailure) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Novaris-Recovery fehlgeschlagen")
+                    .setMessage("Die vorherigen Daten konnten nicht vollständig wiederhergestellt werden. Bitte die App nicht deinstallieren und keine weiteren Updates durchführen.")
+                    .setPositiveButton("App schließen") { _, _ -> finish() }
+                    .setCancelable(false).show()
+                return
+            }
+            android.widget.Toast.makeText(this, "Unterbrochene Wiederherstellung zurückgesetzt", android.widget.Toast.LENGTH_LONG).show()
         }
         val store=ContentStore(this)
         val backupExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->

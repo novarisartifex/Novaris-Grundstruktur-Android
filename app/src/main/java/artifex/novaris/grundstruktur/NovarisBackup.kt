@@ -113,6 +113,43 @@ internal object NovarisBackup {
         return items
     }
 
+    /** Reverts an interrupted restore before any normal app database access. */
+    fun recoverInterrupted(context: Context): Boolean {
+        val marker = File(context.filesDir, "novaris-restore-in-progress")
+        if (!marker.isFile) return false
+        val previous = File(context.filesDir, "novaris-restore-previous")
+        val active = File(context.filesDir, "novaris-content")
+        val snapshotFile = File(context.filesDir, "novaris-restore-previous-database.json")
+        require(snapshotFile.isFile) { "Missing database recovery snapshot" }
+        val snapshot = JSONObject(snapshotFile.readText())
+        val db = SQLiteDatabase.openDatabase(context.getDatabasePath("novaris.db").path, null, SQLiteDatabase.OPEN_READWRITE)
+        try {
+            db.beginTransaction()
+            try {
+                for (table in listOf("entries", "metadata")) {
+                    val keys = if (table == "entries") listOf("section", "id", "title", "category", "detail") else listOf("key", "value")
+                    val rows = snapshot.getJSONArray(table)
+                    db.delete(table, null, null)
+                    for (i in 0 until rows.length()) {
+                        val row = rows.getJSONArray(i)
+                        val values = android.content.ContentValues()
+                        for ((j, key) in keys.withIndex()) values.put(key, row.getString(j))
+                        db.insertOrThrow(table, null, values)
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+        } finally { db.close() }
+        if (previous.isDirectory) {
+            val failed = File(context.filesDir, "novaris-restore-failed-content")
+            require(!failed.exists()) { "Failed restore content already exists" }
+            if (active.exists()) require(active.renameTo(failed))
+            require(previous.renameTo(active)) { "Cannot recover offline content" }
+        }
+        require(marker.delete()) { "Cannot clear restore marker" }
+        return true
+    }
+
     /** Restore only after full validation; stage content and keep old data for rollback. */
     fun restore(context: Context, uri: Uri) {
         val items = load(context, uri)

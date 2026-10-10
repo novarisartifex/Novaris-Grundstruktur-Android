@@ -54,6 +54,27 @@ internal class ShardedDataUpdater(private val context: Context) {
         JSONObject(File(active(), "manifest.json").readText())
     } catch (_: Exception) { null }
 
+    /** Restore last fully validated generation if DB activation fails. */
+    fun rollback(): Boolean {
+        val previous = File(base, "previous")
+        if (!previous.isDirectory) return false
+        val current = active()
+        val failed = File(base, "failed-" + System.currentTimeMillis())
+        if (current.exists() && !current.renameTo(failed)) return false
+        if (!previous.renameTo(current)) {
+            if (failed.exists()) failed.renameTo(current)
+            return false
+        }
+        return true
+    }
+
+    fun mediaFile(relativePath: String): File? {
+        val path = validatedPath(relativePath)
+        if (!path.startsWith("media/")) return null
+        val file = File(active(), path)
+        return file.takeIf { it.isFile && it.canonicalPath.startsWith(active().canonicalPath + File.separator) }
+    }
+
     fun update(): String {
         base.mkdirs()
         val raw = bytes(remote + "manifest.json", maxManifestBytes)

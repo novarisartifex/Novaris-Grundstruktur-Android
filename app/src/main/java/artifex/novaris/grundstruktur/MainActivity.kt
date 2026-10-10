@@ -122,7 +122,12 @@ private fun checkData(activity: Activity, store: ContentStore): String {
     val message = updater.update()
     val manifest = updater.activeManifest() ?: error("No active manifest")
     if (manifest.getLong("data_version") > store.version()) {
-        store.installSharded(java.io.File(activity.filesDir, "novaris-content/active"), manifest)
+        try {
+            store.installSharded(java.io.File(activity.filesDir, "novaris-content/active"), manifest)
+        } catch (error: Exception) {
+            updater.rollback()
+            throw error
+        }
     }
     return message
 }

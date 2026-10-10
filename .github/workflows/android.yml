@@ -18,8 +18,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - run: gradle :app:assembleDebug --stacktrace
+      - name: Compile Kotlin and build debug APK
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: novaris-debug-apk
           path: app/build/outputs/apk/debug/*.apk

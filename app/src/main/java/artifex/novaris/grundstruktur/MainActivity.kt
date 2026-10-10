@@ -44,7 +44,10 @@ private class ContentStore(activity: Activity): SQLiteOpenHelper(activity, "nova
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
     fun version(): Long = readableDatabase.rawQuery("SELECT value FROM metadata WHERE key='data_version'", null).use { if(it.moveToFirst()) it.getString(0).toLongOrNull() ?: 0L else 0L }
-    fun install(data: JSONObject) {
+    fun hasShardedData(): Boolean = readableDatabase.rawQuery("SELECT value FROM metadata WHERE key='data_source'", null).use {
+        it.moveToFirst() && it.getString(0) == "sharded"
+    }
+    fun install(data: JSONObject, source: String = "seed") {
         val schema = data.optInt("schema_version")
         val version = data.optLong("data_version")
         require(schema == 1 && version > 0) { "Unsupported data format" }
@@ -75,6 +78,7 @@ private class ContentStore(activity: Activity): SQLiteOpenHelper(activity, "nova
                 insert.executeInsert()
             }
             db.execSQL("INSERT OR REPLACE INTO metadata(key,value) VALUES('data_version',?)",arrayOf(version.toString()))
+            db.execSQL("INSERT OR REPLACE INTO metadata(key,value) VALUES('data_source',?)",arrayOf(source))
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
@@ -91,7 +95,7 @@ private class ContentStore(activity: Activity): SQLiteOpenHelper(activity, "nova
         val combined = JSONObject().put("schema_version", 1)
             .put("data_version", manifest.getLong("data_version"))
         for (section in sections) combined.put(section, arrays.getValue(section))
-        install(combined)
+        install(combined, source = "sharded")
     }
     fun entries(section: String): List<Entry> {
         val result = mutableListOf<Entry>()
@@ -122,17 +126,18 @@ private fun getBytes(url: String, max: Int): ByteArray {
 }
 private fun checkData(activity: Activity, store: ContentStore): String {
     val updater = ShardedDataUpdater(activity)
+    val hadPreviousGeneration = updater.activeManifest() != null
     val beforeVersion = updater.activeManifest()?.optLong("data_version") ?: 0L
     val message = updater.update()
     val manifest = updater.activeManifest() ?: error("No active manifest")
     val activeVersion = manifest.getLong("data_version")
     // The bundled seed and first published dataset may share version 1.
     // Install the complete dataset on first activation even at equal version.
-    if (activeVersion > store.version() || beforeVersion == 0L) {
+    if (activeVersion > store.version() || !store.hasShardedData()) {
         try {
             store.installSharded(java.io.File(activity.filesDir, "novaris-content/active"), manifest)
         } catch (error: Exception) {
-            if (activeVersion > beforeVersion) {
+            if (hadPreviousGeneration && activeVersion > beforeVersion) {
                 check(updater.rollback()) { "Data installation failed and rollback was unsuccessful: ${error.message}" }
             }
             throw error

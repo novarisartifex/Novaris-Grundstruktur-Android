@@ -168,12 +168,17 @@ class MainActivity: ComponentActivity() {
             var filter by remember { mutableStateOf("") }
             var selectedCategory by remember { mutableStateOf("Alle") }
             var scenePerson by remember { mutableStateOf("") }
+            var sceneLanguage by remember { mutableStateOf("de") }
             var revision by remember { mutableIntStateOf(0) }
             var status by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
             val scope= rememberCoroutineScope()
             val tabs=listOf("people" to "Personen","districts" to "Bereiche & Gebiete","scenes" to "Szenen","world" to "Weltstruktur","media" to "Bilder")
             val entries=remember(section,revision) { if(section=="media") emptyList() else store.entries(section) }
+            fun englishScene(id: String): JSONObject? {
+                val file = java.io.File(filesDir, "novaris-content/active/data/translations/en/scenes/$id.json")
+                return if (file.isFile) runCatching { JSONObject(file.readText()) }.getOrNull() else null
+            }
             val categories=remember(entries) { listOf("Alle")+entries.map { it.category }.filter { it.isNotBlank() }.distinct() }
             val filtered=entries.filter {
                 (filter.isBlank() || (it.title+" "+it.category+" "+it.detail).contains(filter,true)) &&
@@ -185,6 +190,13 @@ class MainActivity: ComponentActivity() {
                     Column(Modifier.fillMaxWidth().background(Panel).padding(16.dp)) {
                         Text("NOVARIS",color=Gold,fontWeight=FontWeight.Bold)
                         Text("World, Character & Scene Compendium",style=MaterialTheme.typography.titleMedium)
+                        if (section == "scenes") {
+                            Row {
+                                FilterChip(selected=sceneLanguage=="de",onClick={sceneLanguage="de"},label={Text("Deutsch")})
+                                Spacer(Modifier.width(8.dp))
+                                FilterChip(selected=sceneLanguage=="en",onClick={sceneLanguage="en"},label={Text("English")})
+                            }
+                        }
                         Row(Modifier.horizontalScroll(rememberScrollState())) {
                             tabs.forEach { (key,title) ->
                                 TextButton(onClick={section=key;filter="";selectedCategory="Alle";scenePerson=""}) {
@@ -261,7 +273,21 @@ class MainActivity: ComponentActivity() {
                                             }
                                         }
                                         Spacer(Modifier.height(10.dp))
-                                        Text(entry.detail)
+                                        if (section == "scenes" && sceneLanguage == "en") {
+                                            val english = remember(entry.id, revision) { englishScene(entry.id) }
+                                            if (english != null) {
+                                                Text(english.optString("story"))
+                                                Spacer(Modifier.height(8.dp))
+                                                TextButton(onClick = {
+                                                    val imagePath = java.io.File(filesDir, "novaris-content/active/data/scenes/" + entry.id + ".json")
+                                                    val media = runCatching { JSONObject(imagePath.readText()).optString("offline_image") }.getOrDefault("")
+                                                    val illustration = if (media.startsWith("media/")) "https://raw.githubusercontent.com/novarisartifex/Novaris-Grundstruktur-Data/main/" + media else ""
+                                                    val export = "# " + english.optString("title") + "\n\n" + english.optString("story") + "\n\n" + (if (illustration.isNotBlank()) "Illustration: " + illustration else "")
+                                                    val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, english.optString("title")); putExtra(Intent.EXTRA_TEXT, export) }
+                                                    startActivity(Intent.createChooser(intent, "Share Patreon story"))
+                                                }) { Text("Patreon export (EN)") }
+                                            } else Text("English version not downloaded yet. Update offline data.")
+                                        } else Text(entry.detail)
                                         if (section == "scenes") {
                                             val updater = remember { ShardedDataUpdater(this@MainActivity) }
                                             val imagePath = remember(entry.id, revision) {

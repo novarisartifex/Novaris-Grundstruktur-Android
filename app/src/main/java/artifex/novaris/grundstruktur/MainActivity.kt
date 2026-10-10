@@ -1,0 +1,223 @@
+package artifex.novaris.grundstruktur
+
+import android.app.Activity
+import android.content.Intent
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
+import android.net.Uri
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
+
+private const val DATA_MANIFEST = "https://raw.githubusercontent.com/novarisartifex/Novaris-Grundstruktur-Data/main/manifest.json"
+private const val APK_RELEASE = "https://api.github.com/repos/novarisartifex/Novaris-Grundstruktur-Android/releases/latest"
+private val Gold = Color(0xFFD8B55B)
+private val Night = Color(0xFF070A12)
+private val Panel = Color(0xFF111827)
+
+private class ContentStore(activity: Activity): SQLiteOpenHelper(activity, "novaris.db", null, 1) {
+    override fun onCreate(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS entries (section TEXT NOT NULL, id TEXT NOT NULL, title TEXT NOT NULL, category TEXT NOT NULL, detail TEXT NOT NULL, PRIMARY KEY(section,id))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    }
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+    fun version(): Long = readableDatabase.rawQuery("SELECT value FROM metadata WHERE key='data_version'", null).use { if(it.moveToFirst()) it.getString(0).toLongOrNull() ?: 0L else 0L }
+    fun install(data: JSONObject) {
+        val schema = data.optInt("schema_version")
+        val version = data.optLong("data_version")
+        require(schema == 1 && version > 0) { "Unsupported data format" }
+        val sections = listOf("people","districts","scenes","world")
+        val parsed = mutableListOf<List<String>>()
+        for (section in sections) {
+            val array = data.optJSONArray(section) ?: throw IllegalArgumentException("Missing $section")
+            require(array.length() <= 50000) { "Too many entries" }
+            for (i in 0 until array.length()) {
+                val item = array.getJSONObject(i)
+                val id = item.getString("id").trim()
+                val title = item.optString("name", item.optString("title")).trim()
+                require(id.matches(Regex("[a-zA-Z0-9_-]{1,100}")) && title.isNotEmpty()) { "Invalid entry" }
+                val category = item.optString("classification", item.optString("category", item.optString("lead")))
+                val detail = item.optString("description", item.optString("story", item.optString("summary")))
+                parsed.add(listOf(section,id,title,category,detail))
+            }
+        }
+        require(parsed.isNotEmpty()) { "Empty dataset" }
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("entries",null,null)
+            val insert = db.compileStatement("INSERT INTO entries(section,id,title,category,detail) VALUES(?,?,?,?,?)")
+            for (record in parsed) {
+                insert.clearBindings()
+                record.forEachIndexed { index, value -> insert.bindString(index+1,value) }
+                insert.executeInsert()
+            }
+            db.execSQL("INSERT OR REPLACE INTO metadata(key,value) VALUES('data_version',?)",arrayOf(version.toString()))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+    fun entries(section: String): List<Entry> {
+        val result = mutableListOf<Entry>()
+        readableDatabase.rawQuery("SELECT id,title,category,detail FROM entries WHERE section=? ORDER BY title",arrayOf(section)).use {
+            while(it.moveToNext()) result.add(Entry(it.getString(0),it.getString(1),it.getString(2),it.getString(3)))
+        }
+        return result
+    }
+}
+private data class Entry(val id:String,val title:String,val category:String,val detail:String)
+private fun getBytes(url: String, max: Int): ByteArray {
+    val connection = URL(url).openConnection() as HttpURLConnection
+    connection.connectTimeout=10000; connection.readTimeout=20000
+    connection.setRequestProperty("Accept","application/json")
+    try {
+        require(connection.responseCode == 200) { "HTTP ${connection.responseCode}" }
+        val out=java.io.ByteArrayOutputStream()
+        connection.inputStream.use { input ->
+            val buffer=ByteArray(8192)
+            while(true) {
+                val n=input.read(buffer); if(n<0) break
+                require(out.size()+n <= max) { "Download exceeds limit" }
+                out.write(buffer,0,n)
+            }
+        }
+        return out.toByteArray()
+    } finally { connection.disconnect() }
+}
+private fun checkData(store: ContentStore): String {
+    val manifest=JSONObject(String(getBytes(DATA_MANIFEST,100000),Charsets.UTF_8))
+    require(manifest.optInt("schema_version")==1 && manifest.optString("status")=="published") { "No published update" }
+    val latest=manifest.getJSONObject("latest")
+    val version=latest.getLong("data_version")
+    if(version<=store.version()) return "Daten sind aktuell (v${store.version()})."
+    require(latest.optInt("min_app_version_code",1)<=1) { "App-Update erforderlich" }
+    val url=latest.getString("url")
+    require(url.startsWith("https://github.com/novarisartifex/Novaris-Grundstruktur-Data/releases/download/")) { "Untrusted package URL" }
+    val bytes=getBytes(url,30_000_000)
+    require(bytes.size.toLong()==latest.getLong("size_bytes")) { "Size mismatch" }
+    val hash=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+    require(hash.equals(latest.getString("sha256"),true)) { "SHA-256 mismatch" }
+    val data=JSONObject(String(bytes,Charsets.UTF_8))
+    require(data.getLong("data_version")==version) { "Version mismatch" }
+    store.install(data)
+    return "Daten aktualisiert auf v$version."
+}
+private fun checkApk(): Pair<String,String?> {
+    val release=JSONObject(String(getBytes(APK_RELEASE,150000),Charsets.UTF_8))
+    val tag=release.optString("tag_name")
+    val assets=release.optJSONArray("assets") ?: JSONArray()
+    var link:String?=null
+    for(i in 0 until assets.length()) {
+        val a=assets.getJSONObject(i)
+        if(a.optString("name").endsWith(".apk")) link=a.optString("browser_download_url")
+    }
+    return Pair("Neueste GitHub-Version: $tag",link)
+}
+class MainActivity: ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val store=ContentStore(this)
+        if(store.version()==0L) {
+            try { store.install(JSONObject(assets.open("seed.json").bufferedReader().use { it.readText() })) } catch (_:Exception) {}
+        }
+        setContent {
+            var section by remember { mutableStateOf("people") }
+            var filter by remember { mutableStateOf("") }
+            var selectedCategory by remember { mutableStateOf("Alle") }
+            var scenePerson by remember { mutableStateOf("") }
+            var revision by remember { mutableIntStateOf(0) }
+            var status by remember { mutableStateOf("") }
+            var busy by remember { mutableStateOf(false) }
+            val scope= rememberCoroutineScope()
+            val tabs=listOf("people" to "Personen","districts" to "Bereiche & Gebiete","scenes" to "Szenen","world" to "Weltstruktur")
+            val entries=remember(section,revision) { store.entries(section) }
+            val categories=remember(entries) { listOf("Alle")+entries.map { it.category }.filter { it.isNotBlank() }.distinct() }
+            val filtered=entries.filter {
+                (filter.isBlank() || (it.title+" "+it.category+" "+it.detail).contains(filter,true)) &&
+                (selectedCategory=="Alle" || it.category==selectedCategory) &&
+                (scenePerson.isBlank() || section!="scenes" || it.detail.contains(scenePerson,true))
+            }
+            MaterialTheme(colorScheme=darkColorScheme(primary=Gold,background=Night,surface=Panel,onSurface=Color(0xFFEEF2F7))) {
+                Column(Modifier.fillMaxSize().background(Night)) {
+                    Column(Modifier.fillMaxWidth().background(Panel).padding(16.dp)) {
+                        Text("NOVARIS",color=Gold,fontWeight=FontWeight.Bold)
+                        Text("World, Character & Scene Compendium",style=MaterialTheme.typography.titleMedium)
+                        Row(Modifier.horizontalScroll(rememberScrollState())) {
+                            tabs.forEach { (key,title) ->
+                                TextButton(onClick={section=key;filter="";selectedCategory="Alle";scenePerson=""}) {
+                                    Text(title,color=if(section==key) Gold else Color.LightGray)
+                                }
+                            }
+                        }
+                    }
+                    LazyColumn(contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                        item {
+                            OutlinedTextField(value=filter,onValueChange={filter=it},label={Text("Suchen")},modifier=Modifier.fillMaxWidth(),singleLine=true)
+                            if(section=="people" || section=="scenes") {
+                                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                                    categories.forEach { category ->
+                                        FilterChip(selected=selectedCategory==category,onClick={selectedCategory=category},label={Text(category)},modifier=Modifier.padding(end=6.dp))
+                                    }
+                                }
+                            }
+                            Text("${filtered.size} Einträge",color=Gold)
+                        }
+                        items(filtered,key={it.id}) { entry ->
+                            var expanded by remember(entry.id) { mutableStateOf(false) }
+                            Card(colors=CardDefaults.cardColors(containerColor=Panel),border=BorderStroke(1.dp,Gold.copy(alpha=.25f)),shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth()) {
+                                Column(Modifier.clickable { expanded=!expanded }.padding(16.dp)) {
+                                    Text(entry.category,color=Gold,style=MaterialTheme.typography.labelMedium)
+                                    Text(entry.title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold)
+                                    if(expanded) {
+                                        Spacer(Modifier.height(10.dp))
+                                        Text(entry.detail)
+                                        if(section=="people") TextButton(onClick={section="scenes";filter="";selectedCategory="Alle";scenePerson=entry.title}) { Text("Zur Szenenbibliothek") }
+                                    } else Text("⌄",color=Gold)
+                                }
+                            }
+                        }
+                        item {
+                            HorizontalDivider()
+                            Text("Aktualisierungen",color=Gold)
+                            Button(enabled=!busy,onClick={
+                                busy=true
+                                scope.launch {
+                                    status=withContext(Dispatchers.IO) { try { checkData(store) } catch(e:Exception) { "Datenupdate: ${e.message ?: "Fehler"}" } }
+                                    revision++;busy=false
+                                }
+                            }) { Text("Daten prüfen") }
+                            OutlinedButton(enabled=!busy,onClick={
+                                busy=true
+                                scope.launch {
+                                    val result=withContext(Dispatchers.IO) { try { checkApk() } catch(e:Exception) { Pair("APK-Prüfung: ${e.message}",null) } }
+                                    status=result.first;busy=false
+                                    result.second?.let { url -> startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url))) }
+                                }
+                            }) { Text("APK-Version prüfen") }
+                            if(status.isNotBlank()) Text(status)
+                            Text("Offline-Datenversion: ${store.version()}",color=Color.LightGray)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -229,6 +229,26 @@ class MainActivity: ComponentActivity() {
                                     Text(entry.category,color=Gold,style=MaterialTheme.typography.labelMedium)
                                     Text(entry.title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold)
                                     if(expanded) {
+                                        if (section == "people") {
+                                            val updater = remember { ShardedDataUpdater(this@MainActivity) }
+                                            val imagePaths = remember(entry.id, revision) {
+                                                val file = java.io.File(filesDir, "novaris-content/active/data/people/${entry.id}.json")
+                                                if (file.isFile) {
+                                                    val html = runCatching { JSONObject(file.readText()).optString("source_html") }.getOrDefault("")
+                                                    Regex("media/[a-f0-9]{64}\\.png").findAll(html).map { it.value }.distinct().toList()
+                                                } else emptyList()
+                                            }
+                                            imagePaths.forEach { path ->
+                                                val bitmap = remember(path, revision) {
+                                                    updater.mediaFile(path)?.let { BitmapFactory.decodeFile(it.absolutePath) }?.asImageBitmap()
+                                                }
+                                                if (bitmap != null) {
+                                                    Image(bitmap = bitmap, contentDescription = entry.title,
+                                                        contentScale = ContentScale.Fit,
+                                                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
+                                                }
+                                            }
+                                        }
                                         Spacer(Modifier.height(10.dp))
                                         Text(entry.detail)
                                         if(section=="people") TextButton(onClick={section="scenes";filter="";selectedCategory="Alle";scenePerson=entry.title}) { Text("Zur Szenenbibliothek") }

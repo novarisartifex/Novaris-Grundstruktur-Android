@@ -82,7 +82,11 @@ internal class ShardedDataUpdater(private val context: Context) {
         require(manifest.optInt("schema_version") in 1..2 && manifest.optString("status") == "published")
         val version = manifest.getLong("data_version")
         val old = activeManifest()
-        if (old != null && version <= old.optLong("data_version")) return "Daten aktuell (v$version)"
+        if (old != null && version < old.optLong("data_version")) error("Remote version is older than installed data")
+        if (old != null && version == old.optLong("data_version")) {
+            require(old.toString() == manifest.toString()) { "Manifest changed without version increment" }
+            return "Daten aktuell (v$version)"
+        }
         val list = manifest.getJSONArray("files")
         require(list.length() in 1..10000) { "Invalid manifest size" }
         val staging = File(base, "staging")

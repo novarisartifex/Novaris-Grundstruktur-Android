@@ -251,6 +251,10 @@ class MainActivity: ComponentActivity() {
                                         }
                                         Spacer(Modifier.height(10.dp))
                                         Text(entry.detail)
+                                        if (section == "scenes") {
+                                            Text("Szenenbilder benötigen eine Internetverbindung, sofern sie nicht lokal importiert wurden.", color = Color.LightGray,
+                                                style = MaterialTheme.typography.bodySmall)
+                                        }
                                         if(section=="people") TextButton(onClick={section="scenes";filter="";selectedCategory="Alle";scenePerson=entry.title}) { Text("Zur Szenenbibliothek") }
                                     } else Text("⌄",color=Gold)
                                 }

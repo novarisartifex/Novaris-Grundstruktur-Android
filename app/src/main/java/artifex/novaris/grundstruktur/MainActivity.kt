@@ -126,7 +126,9 @@ private fun checkData(activity: Activity, store: ContentStore): String {
     val message = updater.update()
     val manifest = updater.activeManifest() ?: error("No active manifest")
     val activeVersion = manifest.getLong("data_version")
-    if (activeVersion > store.version()) {
+    // The bundled seed and first published dataset may share version 1.
+    // Install the complete dataset on first activation even at equal version.
+    if (activeVersion > store.version() || beforeVersion == 0L) {
         try {
             store.installSharded(java.io.File(activity.filesDir, "novaris-content/active"), manifest)
         } catch (error: Exception) {

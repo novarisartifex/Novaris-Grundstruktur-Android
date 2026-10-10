@@ -75,6 +75,21 @@ private class ContentStore(activity: Activity): SQLiteOpenHelper(activity, "nova
             db.setTransactionSuccessful()
         } finally { db.endTransaction() }
     }
+    fun installSharded(directory: java.io.File, manifest: JSONObject) {
+        val sections = listOf("people", "districts", "scenes", "world")
+        val arrays = sections.associateWith { JSONArray() }
+        val files = manifest.getJSONArray("files")
+        for (i in 0 until files.length()) {
+            val path = files.getJSONObject(i).getString("path")
+            val section = sections.firstOrNull { path.startsWith("data/$it/") && path.endsWith(".json") } ?: continue
+            val item = JSONObject(java.io.File(directory, path).readText())
+            arrays.getValue(section).put(item)
+        }
+        val combined = JSONObject().put("schema_version", 1)
+            .put("data_version", manifest.getLong("data_version"))
+        for (section in sections) combined.put(section, arrays.getValue(section))
+        install(combined)
+    }
     fun entries(section: String): List<Entry> {
         val result = mutableListOf<Entry>()
         readableDatabase.rawQuery("SELECT id,title,category,detail FROM entries WHERE section=? ORDER BY title",arrayOf(section)).use {
@@ -102,23 +117,14 @@ private fun getBytes(url: String, max: Int): ByteArray {
         return out.toByteArray()
     } finally { connection.disconnect() }
 }
-private fun checkData(store: ContentStore): String {
-    val manifest=JSONObject(String(getBytes(DATA_MANIFEST,100000),Charsets.UTF_8))
-    require(manifest.optInt("schema_version")==1 && manifest.optString("status")=="published") { "No published update" }
-    val latest=manifest.getJSONObject("latest")
-    val version=latest.getLong("data_version")
-    if(version<=store.version()) return "Daten sind aktuell (v${store.version()})."
-    require(latest.optInt("min_app_version_code",1)<=1) { "App-Update erforderlich" }
-    val url=latest.getString("url")
-    require(url.startsWith("https://github.com/novarisartifex/Novaris-Grundstruktur-Data/releases/download/")) { "Untrusted package URL" }
-    val bytes=getBytes(url,30_000_000)
-    require(bytes.size.toLong()==latest.getLong("size_bytes")) { "Size mismatch" }
-    val hash=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-    require(hash.equals(latest.getString("sha256"),true)) { "SHA-256 mismatch" }
-    val data=JSONObject(String(bytes,Charsets.UTF_8))
-    require(data.getLong("data_version")==version) { "Version mismatch" }
-    store.install(data)
-    return "Daten aktualisiert auf v$version."
+private fun checkData(activity: Activity, store: ContentStore): String {
+    val updater = ShardedDataUpdater(activity)
+    val message = updater.update()
+    val manifest = updater.activeManifest() ?: error("No active manifest")
+    if (manifest.getLong("data_version") > store.version()) {
+        store.installSharded(java.io.File(activity.filesDir, "novaris-content/active"), manifest)
+    }
+    return message
 }
 private fun checkApk(): Pair<String,String?> {
     val release=JSONObject(String(getBytes(APK_RELEASE,150000),Charsets.UTF_8))
@@ -200,7 +206,7 @@ class MainActivity: ComponentActivity() {
                             Button(enabled=!busy,onClick={
                                 busy=true
                                 scope.launch {
-                                    status=withContext(Dispatchers.IO) { try { checkData(store) } catch(e:Exception) { "Datenupdate: ${e.message ?: "Fehler"}" } }
+                                    status=withContext(Dispatchers.IO) { try { checkData(this@MainActivity, store) } catch(e:Exception) { "Datenupdate: ${e.message ?: "Fehler"}" } }
                                     revision++;busy=false
                                 }
                             }) { Text("Daten prüfen") }

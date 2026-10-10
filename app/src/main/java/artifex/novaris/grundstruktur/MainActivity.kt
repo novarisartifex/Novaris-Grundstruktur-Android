@@ -160,6 +160,15 @@ private fun checkApk(): Pair<String,String?> {
 class MainActivity: ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (java.io.File(filesDir, "novaris-restore-in-progress").exists()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Novaris-Wiederherstellung unterbrochen")
+                .setMessage("Ein vorheriger Restore wurde nicht abgeschlossen. Die vorhandenen Sicherungsdateien bleiben erhalten. Bitte keine Datenupdates oder Deinstallation durchführen, bis die Wiederherstellung geprüft wurde.")
+                .setPositiveButton("App schließen") { _, _ -> finish() }
+                .setCancelable(false)
+                .show()
+            return
+        }
         val store=ContentStore(this)
         val backupExport = registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
             if (uri != null) {

@@ -279,13 +279,10 @@ class MainActivity: ComponentActivity() {
                                                 Text(english.optString("story"))
                                                 Spacer(Modifier.height(8.dp))
                                                 TextButton(onClick = {
-                                                    val imagePath = java.io.File(filesDir, "novaris-content/active/data/scenes/" + entry.id + ".json")
-                                                    val media = runCatching { JSONObject(imagePath.readText()).optString("offline_image") }.getOrDefault("")
-                                                    val illustration = if (media.startsWith("media/")) "https://raw.githubusercontent.com/novarisartifex/Novaris-Grundstruktur-Data/main/" + media else ""
-                                                    val export = "# " + english.optString("title") + "\n\n" + english.optString("story") + "\n\n" + (if (illustration.isNotBlank()) "Illustration: " + illustration else "")
-                                                    val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, english.optString("title")); putExtra(Intent.EXTRA_TEXT, export) }
-                                                    startActivity(Intent.createChooser(intent, "Share Patreon story"))
-                                                }) { Text("Patreon export (EN)") }
+                                                    runCatching {
+                                                        PatreonExporter.share(this@MainActivity, entry.id, english)
+                                                    }.onFailure { status = "Patreon export: " + (it.message ?: "failed") }
+                                                }) { Text("Patreon ZIP (EN)") }
                                             } else Text("English version not downloaded yet. Update offline data.")
                                         } else Text(entry.detail)
                                         if (section == "scenes") {

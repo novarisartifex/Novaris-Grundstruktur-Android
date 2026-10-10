@@ -172,6 +172,11 @@ class MainActivity: ComponentActivity() {
         }
         val backupImport = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Novaris-Backup wiederherstellen?")
+                    .setMessage("Vorhandene Offline-Daten und Datenbankeinträge werden ersetzt. Bitte zuerst ein eigenes Backup speichern. Nicht fortfahren, wenn du noch keine Sicherung hast.")
+                    .setNegativeButton("Abbrechen", null)
+                    .setPositiveButton("Wiederherstellen") { _, _ ->
                 Thread {
                     runCatching { store.close(); NovarisBackup.restore(this, uri) }
                         .onSuccess { runOnUiThread {
@@ -179,6 +184,7 @@ class MainActivity: ComponentActivity() {
                         } }
                         .onFailure { error -> runOnUiThread { android.widget.Toast.makeText(this, "Wiederherstellung fehlgeschlagen: ${error.message}", android.widget.Toast.LENGTH_LONG).show() } }
                 }.start()
+                    }
             }
         }
         if(store.version()==0L) {

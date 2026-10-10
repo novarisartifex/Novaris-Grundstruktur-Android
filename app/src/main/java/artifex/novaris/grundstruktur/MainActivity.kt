@@ -21,6 +21,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -224,11 +225,11 @@ class MainActivity: ComponentActivity() {
                 (selectedCategory=="Alle" || it.category==selectedCategory) &&
                 (scenePerson.isBlank() || section!="scenes" || it.detail.contains(scenePerson,true))
             }
-            MaterialTheme(colorScheme=darkColorScheme(primary=Gold,background=Night,surface=Panel,onSurface=Color(0xFFEEF2F7))) {
-                Column(Modifier.fillMaxSize().background(Night)) {
+            MaterialTheme(colorScheme=darkColorScheme(primary=Gold,onPrimary=Night,background=Night,onBackground=Color(0xFFEEF2F7),surface=Panel,onSurface=Color(0xFFEEF2F7),onSurfaceVariant=Color(0xFFD1D5DB),outline=Color(0xFF9CA3AF))) {
+                Column(Modifier.fillMaxSize().background(Night).safeDrawingPadding()) {
                     Column(Modifier.fillMaxWidth().background(Panel).padding(16.dp)) {
                         Text("NOVARIS",color=Gold,fontWeight=FontWeight.Bold)
-                        Text("World, Character & Scene Compendium",style=MaterialTheme.typography.titleMedium)
+                        Text("World, Character & Scene Compendium",color=MaterialTheme.colorScheme.onSurface,style=MaterialTheme.typography.titleMedium)
                         if (section == "scenes") {
                             Row {
                                 FilterChip(selected=sceneLanguage=="de",onClick={sceneLanguage="de"},label={Text("Deutsch")})
@@ -378,7 +379,7 @@ class MainActivity: ComponentActivity() {
                                     busy=false
                                 }
                             }) { Text("App-Update prüfen") }
-                            if(status.isNotBlank()) Text(status)
+                            if(status.isNotBlank()) Text(status,color=MaterialTheme.colorScheme.onSurface,modifier=Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(8.dp)).padding(12.dp))
                             Text("Offline-Datenversion: ${store.version()}",color=Color.LightGray)
                         }
                     }

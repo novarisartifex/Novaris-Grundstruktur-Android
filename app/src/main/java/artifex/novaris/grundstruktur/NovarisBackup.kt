@@ -121,6 +121,7 @@ internal object NovarisBackup {
         require(entries.length() <= 50000 && metadata.length() <= 50000)
         for (i in 0 until entries.length()) require(entries.getJSONArray(i).length() == 5)
         for (i in 0 until metadata.length()) require(metadata.getJSONArray(i).length() == 2)
+        for (name in items.keys.filter { it.startsWith("preferences/") }) require(name.matches(Regex("preferences/[A-Za-z0-9_.-]{1,120}\\.xml")))
         val base = File(context.filesDir, "novaris-content")
         val staging = File(context.filesDir, "novaris-restore-staging")
         require(!staging.exists()) { "Old restore staging exists" }
@@ -133,7 +134,11 @@ internal object NovarisBackup {
                 file.parentFile?.mkdirs()
                 file.writeBytes(bytes)
             }
-            // Save previous database logically before changing anything.
+            // Persist a recoverable snapshot of the old database before changing files.
+            val oldDatabase = database(context).toString().toByteArray(Charsets.UTF_8)
+            val dbRecovery = File(context.filesDir, "novaris-restore-previous-database.json")
+            require(!dbRecovery.exists()) { "Previous database recovery snapshot exists" }
+            dbRecovery.writeBytes(oldDatabase)
             val previous = File(context.filesDir, "novaris-restore-previous")
             require(!previous.exists()) { "Previous restore backup exists" }
             if (base.exists()) require(base.renameTo(previous))
@@ -165,7 +170,8 @@ internal object NovarisBackup {
                 if (previous.exists()) previous.renameTo(base)
                 throw error
             }
-            // Keep previous generation for recovery. Restart app to refresh open DB helper.
+            // Keep previous content and DB recovery snapshot until migration is verified.
+            // Preferences are deliberately not overwritten while the app process is alive.
         } finally {
             if (staging.exists()) staging.deleteRecursively()
         }

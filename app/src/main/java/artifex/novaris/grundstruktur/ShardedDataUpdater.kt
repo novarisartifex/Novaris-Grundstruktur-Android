@@ -101,7 +101,10 @@ internal class ShardedDataUpdater(private val context: Context) {
             val previous = File(base, "previous")
             // Never destroy a rollback generation until the candidate has passed all checks.
             // If a previous generation exists, keep it and stop rather than delete it.
-            if (previous.exists()) {\n                val archive = File(base, "archive-" + System.currentTimeMillis())\n                require(previous.renameTo(archive)) { "Could not preserve old rollback generation" }\n            }
+            if (previous.exists()) {
+                val archive = File(base, "archive-" + System.currentTimeMillis())
+                require(previous.renameTo(archive)) { "Could not preserve old rollback generation" }
+            }
             val current = active()
             if (current.exists()) require(current.renameTo(previous)) { "Could not back up active data" }
             if (!staging.renameTo(current)) {

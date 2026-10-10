@@ -6,8 +6,6 @@ import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.InputStream
-import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -120,6 +118,7 @@ internal object NovarisBackup {
         val dbJson = JSONObject(String(items.getValue("database.json"), Charsets.UTF_8))
         val entries = dbJson.getJSONArray("entries")
         val metadata = dbJson.getJSONArray("metadata")
+        require(entries.length() <= 50000 && metadata.length() <= 50000)
         for (i in 0 until entries.length()) require(entries.getJSONArray(i).length() == 5)
         for (i in 0 until metadata.length()) require(metadata.getJSONArray(i).length() == 2)
         val base = File(context.filesDir, "novaris-content")
@@ -135,7 +134,6 @@ internal object NovarisBackup {
                 file.writeBytes(bytes)
             }
             // Save previous database logically before changing anything.
-            val previousDb = database(context)
             val previous = File(context.filesDir, "novaris-restore-previous")
             require(!previous.exists()) { "Previous restore backup exists" }
             if (base.exists()) require(base.renameTo(previous))

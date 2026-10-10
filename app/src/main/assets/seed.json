@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "data_version": 1,
+  "people": [
+    {
+      "id": "aeon",
+      "name": "Aeon",
+      "classification": "Artifex",
+      "role": "Supreme Strategist & Co-Founder",
+      "district": "Citadel District",
+      "description": "The more withdrawn half of Artifex. Aeon guides Novaris through long-term planning, structure and deliberate intervention."
+    },
+    {
+      "id": "liria",
+      "name": "Liria",
+      "classification": "Artifex",
+      "role": "Supreme Observer & Co-Founder",
+      "district": "Citadel District",
+      "description": "Change · Humanity"
+    }
+  ],
+  "districts": [
+    {
+      "id": "citadel",
+      "name": "Citadel District",
+      "lead": "Aeon & Liria",
+      "description": "Heart and headquarters of Novaris."
+    }
+  ],
+  "scenes": [],
+  "world": [
+    {
+      "id": "aetheris",
+      "name": "Aetheris",
+      "description": "Die Welt existierte lange vor Novaris."
+    },
+    {
+      "id": "asterion",
+      "name": "Asterion",
+      "description": "Die Stadt von Novaris."
+    },
+    {
+      "id": "novaris",
+      "name": "Novaris",
+      "description": "Die Organisation Novaris."
+    }
+  ]
+}

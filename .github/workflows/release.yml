@@ -34,8 +34,9 @@ jobs:
           test -n "$SIGNING_STORE_PASSWORD"
           test -n "$SIGNING_KEY_ALIAS"
           test -n "$SIGNING_KEY_PASSWORD"
-          grep -q 'versionName = "0.2.0"' app/build.gradle.kts
-          test "$RELEASE_TAG" = "v0.2.0"
+          APP_VERSION=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -n 1)
+          test -n "$APP_VERSION"
+          test "$RELEASE_TAG" = "v$APP_VERSION"
           printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/novaris-release.jks"
           echo "NOVARIS_SIGNING_STORE_FILE=$RUNNER_TEMP/novaris-release.jks" >> "$GITHUB_ENV"
       - name: Build signed release APK

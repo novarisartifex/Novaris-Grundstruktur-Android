@@ -84,7 +84,14 @@ internal class ShardedDataUpdater(private val context: Context) {
         val old = activeManifest()
         if (old != null && version < old.optLong("data_version")) error("Remote version is older than installed data")
         if (old != null && version == old.optLong("data_version")) {
-            require(old.toString() == manifest.toString()) { "Manifest changed without version increment" }
+            val oldFiles = old.getJSONArray("files")
+            val newFiles = manifest.getJSONArray("files")
+            fun signatures(files: JSONArray): Map<String, String> =
+                (0 until files.length()).associate { index ->
+                    val item = files.getJSONObject(index)
+                    item.getString("path") to (item.getString("sha256") + ":" + item.getLong("size_bytes"))
+                }
+            require(signatures(oldFiles) == signatures(newFiles)) { "Manifest changed without version increment" }
             return "Daten aktuell (v$version)"
         }
         val list = manifest.getJSONArray("files")

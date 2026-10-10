@@ -327,7 +327,8 @@ class MainActivity: ComponentActivity() {
                                             val available = AppUpdater.check(this@MainActivity)
                                             if (available == null) "App ist aktuell (Build ${AppUpdater.installedCode(this@MainActivity)})."
                                             else {
-                                                AppUpdater.downloadAndInstall(this@MainActivity, available)
+                                                val apk = AppUpdater.download(this@MainActivity, available)
+                                                withContext(Dispatchers.Main) { AppUpdater.install(this@MainActivity, apk) }
                                                 "Update ${available.version} heruntergeladen. Bitte Android-Installation bestätigen."
                                             }
                                         } catch (e: Exception) { "App-Update: ${e.message ?: "Fehler"}" }

@@ -15,6 +15,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -158,8 +161,8 @@ class MainActivity: ComponentActivity() {
             var status by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
             val scope= rememberCoroutineScope()
-            val tabs=listOf("people" to "Personen","districts" to "Bereiche & Gebiete","scenes" to "Szenen","world" to "Weltstruktur")
-            val entries=remember(section,revision) { store.entries(section) }
+            val tabs=listOf("people" to "Personen","districts" to "Bereiche & Gebiete","scenes" to "Szenen","world" to "Weltstruktur","media" to "Bilder")
+            val entries=remember(section,revision) { if(section=="media") emptyList() else store.entries(section) }
             val categories=remember(entries) { listOf("Alle")+entries.map { it.category }.filter { it.isNotBlank() }.distinct() }
             val filtered=entries.filter {
                 (filter.isBlank() || (it.title+" "+it.category+" "+it.detail).contains(filter,true)) &&
@@ -179,6 +182,34 @@ class MainActivity: ComponentActivity() {
                             }
                         }
                     }
+                    if (section == "media") {
+                        val updater = remember { ShardedDataUpdater(this@MainActivity) }
+                        val media = remember(revision) {
+                            val manifest = updater.activeManifest()
+                            val list = manifest?.optJSONArray("files")
+                            if (list == null) emptyList() else (0 until list.length()).mapNotNull { i ->
+                                list.optJSONObject(i)?.optString("path")?.takeIf { it.startsWith("media/") }
+                            }
+                        }
+                        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            item { Text("${media.size} lokal gespeicherte Bilder", color = Gold) }
+                            items(media) { path ->
+                                val bitmap = remember(path, revision) {
+                                    updater.mediaFile(path)?.let { BitmapFactory.decodeFile(it.absolutePath) }?.asImageBitmap()
+                                }
+                                if (bitmap != null) {
+                                    Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                                        Column(Modifier.padding(8.dp)) {
+                                            Image(bitmap = bitmap, contentDescription = path.substringAfterLast('/'),
+                                                contentScale = ContentScale.Fit,
+                                                modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp))
+                                            Text(path.substringAfterLast('/'), color = Gold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
                     LazyColumn(contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         item {
                             OutlinedTextField(value=filter,onValueChange={filter=it},label={Text("Suchen")},modifier=Modifier.fillMaxWidth(),singleLine=true)
@@ -226,6 +257,7 @@ class MainActivity: ComponentActivity() {
                             if(status.isNotBlank()) Text(status)
                             Text("Offline-Datenversion: ${store.version()}",color=Color.LightGray)
                         }
+                    }
                     }
                 }
             }

@@ -56,10 +56,10 @@ private class ContentStore(activity: Activity): SQLiteOpenHelper(activity, "nova
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
                 val id = item.getString("id").trim()
-                val title = item.optString("name", item.optString("title")).trim()
+                val title = item.optString("name").ifBlank { item.optString("title") }.trim()
                 require(id.matches(Regex("[a-zA-Z0-9_-]{1,100}")) && title.isNotEmpty()) { "Invalid entry" }
-                val category = item.optString("classification", item.optString("category", item.optString("lead")))
-                val detail = item.optString("description", item.optString("story", item.optString("summary")))
+                val category = item.optString("classification").ifBlank { item.optString("category").ifBlank { item.optString("lead") } }
+                val detail = item.optString("description").ifBlank { item.optString("story").ifBlank { item.optString("summary") } }
                 parsed.add(listOf(section,id,title,category,detail))
             }
         }

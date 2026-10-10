@@ -108,6 +108,7 @@ internal object NovarisBackup {
             require(bytes.size.toLong() == entry.getLong("size"))
             require(sha(bytes).equals(entry.getString("sha256"), true))
         }
+        require(items.keys.all { it == "database.json" || it.startsWith("content/") || it.startsWith("preferences/") })
         require(items.containsKey("database.json"))
         return items
     }

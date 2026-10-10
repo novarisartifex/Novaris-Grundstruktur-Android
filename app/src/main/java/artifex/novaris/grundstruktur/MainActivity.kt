@@ -122,13 +122,17 @@ private fun getBytes(url: String, max: Int): ByteArray {
 }
 private fun checkData(activity: Activity, store: ContentStore): String {
     val updater = ShardedDataUpdater(activity)
+    val beforeVersion = updater.activeManifest()?.optLong("data_version") ?: 0L
     val message = updater.update()
     val manifest = updater.activeManifest() ?: error("No active manifest")
-    if (manifest.getLong("data_version") > store.version()) {
+    val activeVersion = manifest.getLong("data_version")
+    if (activeVersion > store.version()) {
         try {
             store.installSharded(java.io.File(activity.filesDir, "novaris-content/active"), manifest)
         } catch (error: Exception) {
-            updater.rollback()
+            if (activeVersion > beforeVersion) {
+                check(updater.rollback()) { "Data installation failed and rollback was unsuccessful: ${error.message}" }
+            }
             throw error
         }
     }

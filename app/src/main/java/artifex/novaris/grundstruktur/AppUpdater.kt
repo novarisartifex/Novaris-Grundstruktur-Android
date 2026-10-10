@@ -2,7 +2,6 @@ package artifex.novaris.grundstruktur
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import android.os.Build
@@ -19,8 +18,10 @@ internal object AppUpdater {
     data class Available(val version: String, val url: String, val sha256: String, val code: Long)
     fun installedCode(context: Context): Long {
         val info = context.packageManager.getPackageInfo(context.packageName, 0)
-        return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+        return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else legacyVersionCode(info)
     }
+    @Suppress("DEPRECATION")
+    private fun legacyVersionCode(info: android.content.pm.PackageInfo): Long = info.versionCode.toLong()
     fun check(context: Context): Available? {
         val connection = URL(API).openConnection() as HttpURLConnection
         connection.connectTimeout = 15000

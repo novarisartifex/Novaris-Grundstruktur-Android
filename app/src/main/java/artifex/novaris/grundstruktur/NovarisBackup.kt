@@ -198,6 +198,25 @@ internal object NovarisBackup {
                 if (previous.exists()) check(previous.renameTo(base)) { "Could not recover previous offline content" }
                 throw error
             }
+            // Stage and replace shared preferences only after database activation succeeds.
+            val prefFiles = items.filterKeys { it.startsWith("preferences/") }
+            if (prefFiles.isNotEmpty()) {
+                val prefDir = File(context.applicationInfo.dataDir, "shared_prefs")
+                val prefStaging = File(context.filesDir, "novaris-prefs-staging")
+                val prefPrevious = File(context.filesDir, "novaris-prefs-previous")
+                require(!prefStaging.exists() && !prefPrevious.exists()) { "Preference recovery already exists" }
+                require(prefStaging.mkdirs())
+                for ((name, bytes) in prefFiles) {
+                    val filename = name.removePrefix("preferences/")
+                    require(!filename.contains('/'))
+                    File(prefStaging, filename).writeBytes(bytes)
+                }
+                if (prefDir.exists()) check(prefDir.renameTo(prefPrevious))
+                if (!prefStaging.renameTo(prefDir)) {
+                    if (prefPrevious.exists()) prefPrevious.renameTo(prefDir)
+                    error("Could not activate restored preferences")
+                }
+            }
             // Keep previous content and DB recovery snapshot until migration is verified.
             // Preferences are deliberately not overwritten while the app process is alive.
         } finally {

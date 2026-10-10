@@ -263,8 +263,23 @@ class MainActivity: ComponentActivity() {
                                         Spacer(Modifier.height(10.dp))
                                         Text(entry.detail)
                                         if (section == "scenes") {
-                                            Text("Szenenbilder sind derzeit nicht im Offline-Datenpaket enthalten.", color = Color.LightGray,
-                                                style = MaterialTheme.typography.bodySmall)
+                                            val updater = remember { ShardedDataUpdater(this@MainActivity) }
+                                            val imagePath = remember(entry.id, revision) {
+                                                val file = java.io.File(filesDir, "novaris-content/active/data/scenes/" + entry.id + ".json")
+                                                if (file.isFile) {
+                                                    runCatching { JSONObject(file.readText()).optString("offline_image") }.getOrDefault("")
+                                                } else ""
+                                            }
+                                            if (imagePath.startsWith("media/")) {
+                                                val bitmap = remember(imagePath, revision) {
+                                                    updater.mediaFile(imagePath)?.let { BitmapFactory.decodeFile(it.absolutePath) }?.asImageBitmap()
+                                                }
+                                                if (bitmap != null) {
+                                                    Image(bitmap = bitmap, contentDescription = entry.title,
+                                                        contentScale = ContentScale.Fit,
+                                                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp))
+                                                }
+                                            }
                                         }
                                         if(section=="people") TextButton(onClick={section="scenes";filter="";selectedCategory="Alle";scenePerson=entry.title}) { Text("Zur Szenenbibliothek") }
                                     } else Text("⌄",color=Gold)
